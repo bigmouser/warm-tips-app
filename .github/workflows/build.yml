@@ -1,0 +1,149 @@
+name: 跨平台应用打包
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller
+        pip install -r requirements.txt || true
+    
+    - name: Build Windows executable
+      run: |
+        pyinstaller --onefile --windowed --name "温馨提示工具-Windows" warm_tips_close_all.py
+    
+    - name: Upload Windows artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: 温馨提示工具-Windows
+        path: dist/温馨提示工具-Windows.exe
+
+  build-macos:
+    runs-on: macos-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller
+        pip install -r requirements.txt || true
+    
+    - name: Build macOS application
+      run: |
+        pyinstaller --onefile --windowed --name "温馨提示工具-macOS" warm_tips_close_all.py
+    
+    - name: Create DMG package
+      run: |
+        hdiutil create -volname "温馨提示工具" -srcfolder "dist/温馨提示工具-macOS.app" -ov -format UDZO "温馨提示工具-macOS.dmg"
+    
+    - name: Upload macOS artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: 温馨提示工具-macOS
+        path: 温馨提示工具-macOS.dmg
+
+  build-linux:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y python3-tk
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller
+        pip install -r requirements.txt || true
+    
+    - name: Build Linux executable
+      run: |
+        pyinstaller --onefile --name "温馨提示工具-Linux" warm_tips_close_all.py
+    
+    - name: Upload Linux artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: 温馨提示工具-Linux
+        path: dist/温馨提示工具-Linux
+
+  create-release:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Create GitHub Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v${{ github.run_number }}
+        release_name: Release v${{ github.run_number }}
+        draft: false
+        prerelease: false
+    
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+    
+    - name: Upload Windows release asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./温馨提示工具-Windows/温馨提示工具-Windows.exe
+        asset_name: 温馨提示工具-Windows.exe
+        asset_content_type: application/octet-stream
+    
+    - name: Upload macOS release asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./温馨提示工具-macOS/温馨提示工具-macOS.dmg
+        asset_name: 温馨提示工具-macOS.dmg
+        asset_content_type: application/octet-stream
+    
+    - name: Upload Linux release asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./温馨提示工具-Linux/温馨提示工具-Linux
+        asset_name: 温馨提示工具-Linux
+        asset_content_type: application/octet-stream
